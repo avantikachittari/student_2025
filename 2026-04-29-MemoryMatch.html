@@ -1,0 +1,589 @@
+---
+comments: true
+layout: post
+title: Memory Match Game
+description: A browser-based memory card matching game built for the AP CSP Create Performance Task
+categories: [AP CSP]
+permalink: /Blogs/MemoryMatch.html/
+type: ccc
+author:
+---
+
+<!DOCTYPE html>
+<!--
+  ============================================================
+  PROGRAM: Memory Match — Card Matching Game
+  PURPOSE: A browser-based memory card matching game where
+           the player flips cards to find matching emoji pairs.
+  LANGUAGE: HTML5, CSS3, Vanilla JavaScript (ES6+)
+  
+  AP CSP Create Performance Task Checklist:
+  ✔ Input from the user (click events trigger card flips)
+  ✔ List (array) used to store and manage card data
+  ✔ Student-developed procedure: checkForMatch(card1, card2)
+      - Named procedure with parameters
+      - Contains sequencing, selection, and iteration
+  ✔ Procedure called during gameplay
+  ✔ Output: visual card animations, score display, win screen
+  
+  NOTE: All code written independently. No external libraries used.
+  ============================================================
+-->
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Memory Match</title>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+  <style>
+    /* ── DESIGN TOKENS ─────────────────────────────────────── */
+    :root {
+      --bg:       #0e0e12;
+      --surface:  #18181f;
+      --card-bg:  #1f1f2e;
+      --card-face:#252538;
+      --accent:   #e8c87a;
+      --accent2:  #7a9ee8;
+      --match:    #6fcf97;
+      --fail:     #eb5757;
+      --text:     #f0ede6;
+      --muted:    #6e6d7a;
+      --radius:   14px;
+      --flip:     0.5s;
+    }
+
+    /* ── RESET & BASE ───────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'DM Mono', monospace;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 28px 16px 48px;
+      overflow-x: hidden;
+    }
+
+    /* ── HEADER ─────────────────────────────────────────────── */
+    header {
+      text-align: center;
+      margin-bottom: 32px;
+    }
+    header h1 {
+      font-family: 'DM Serif Display', serif;
+      font-size: clamp(2rem, 6vw, 3.4rem);
+      letter-spacing: -1px;
+      color: var(--accent);
+      line-height: 1.1;
+    }
+    header p {
+      color: var(--muted);
+      font-size: 0.78rem;
+      margin-top: 6px;
+      letter-spacing: 0.08em;
+    }
+
+    /* ── STATS BAR ──────────────────────────────────────────── */
+    #stats {
+      display: flex;
+      gap: 28px;
+      margin-bottom: 28px;
+      font-size: 0.82rem;
+      letter-spacing: 0.06em;
+    }
+    .stat-box {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 2px;
+    }
+    .stat-label { color: var(--muted); font-size: 0.68rem; text-transform: uppercase; }
+    .stat-value { color: var(--accent); font-size: 1.4rem; font-weight: 500; }
+
+    /* ── DIFFICULTY SELECTOR ────────────────────────────────── */
+    #difficulty-bar {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 26px;
+    }
+    .diff-btn {
+      background: var(--surface);
+      border: 1px solid #2e2e3a;
+      color: var(--muted);
+      padding: 6px 18px;
+      border-radius: 40px;
+      cursor: pointer;
+      font-family: 'DM Mono', monospace;
+      font-size: 0.75rem;
+      letter-spacing: 0.06em;
+      transition: all 0.2s;
+    }
+    .diff-btn:hover { border-color: var(--accent); color: var(--accent); }
+    .diff-btn.active { background: var(--accent); color: var(--bg); border-color: var(--accent); }
+
+    /* ── GAME GRID ──────────────────────────────────────────── */
+    #board {
+      display: grid;
+      gap: 12px;
+      perspective: 900px;
+      max-width: 640px;
+      width: 100%;
+    }
+
+    /* ── CARD STYLES ────────────────────────────────────────── */
+    .card {
+      aspect-ratio: 1;
+      cursor: pointer;
+      position: relative;
+      transform-style: preserve-3d;
+      transition: transform var(--flip) cubic-bezier(0.45, 0.15, 0.1, 1.0);
+      border-radius: var(--radius);
+    }
+    .card.flipped { transform: rotateY(180deg); }
+    .card.matched {
+      transform: rotateY(180deg) scale(1.04);
+      cursor: default;
+      pointer-events: none;
+    }
+    .card-face {
+      position: absolute;
+      inset: 0;
+      border-radius: var(--radius);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      backface-visibility: hidden;
+      -webkit-backface-visibility: hidden;
+    }
+
+    /* BACK face (shown by default) */
+    .card-back {
+      background: var(--card-bg);
+      border: 1.5px solid #2b2b3b;
+      font-size: 1.5rem;
+      color: var(--muted);
+      transition: border-color 0.2s, background 0.2s;
+    }
+    .card:not(.flipped):not(.matched):hover .card-back {
+      border-color: var(--accent2);
+      background: #22223a;
+    }
+    .card-back::before {
+      content: '';
+      position: absolute;
+      inset: 8px;
+      border-radius: 8px;
+      border: 1px dashed #33334a;
+    }
+    .card-back-icon { position: relative; z-index: 1; }
+
+    /* FRONT face (shown when flipped) */
+    .card-front {
+      background: var(--card-face);
+      border: 1.5px solid #35355a;
+      transform: rotateY(180deg);
+      font-size: clamp(1.6rem, 5vw, 2.4rem);
+      transition: box-shadow 0.3s;
+    }
+    .card.matched .card-front {
+      border-color: var(--match);
+      box-shadow: 0 0 18px rgba(111, 207, 151, 0.25);
+      background: #1a2e24;
+    }
+
+    /* Wrong-match shake animation */
+    @keyframes shake {
+      0%,100%  { transform: rotateY(180deg) translateX(0); }
+      20%      { transform: rotateY(180deg) translateX(-6px); }
+      40%      { transform: rotateY(180deg) translateX(6px); }
+      60%      { transform: rotateY(180deg) translateX(-4px); }
+      80%      { transform: rotateY(180deg) translateX(4px); }
+    }
+    .card.wrong .card-front {
+      border-color: var(--fail);
+      box-shadow: 0 0 14px rgba(235, 87, 87, 0.25);
+      background: #2a1a1a;
+      animation: shake 0.45s ease;
+    }
+
+    /* ── BUTTONS ────────────────────────────────────────────── */
+    button#restart {
+      margin-top: 30px;
+      background: transparent;
+      border: 1.5px solid var(--accent);
+      color: var(--accent);
+      padding: 10px 32px;
+      border-radius: 40px;
+      cursor: pointer;
+      font-family: 'DM Mono', monospace;
+      font-size: 0.82rem;
+      letter-spacing: 0.1em;
+      transition: background 0.2s, color 0.2s;
+    }
+    button#restart:hover { background: var(--accent); color: var(--bg); }
+
+    /* ── WIN OVERLAY ────────────────────────────────────────── */
+    #win-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(14,14,18,0.88);
+      backdrop-filter: blur(8px);
+      z-index: 100;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+      gap: 16px;
+      text-align: center;
+      padding: 24px;
+    }
+    #win-overlay.show { display: flex; }
+    #win-overlay h2 {
+      font-family: 'DM Serif Display', serif;
+      font-size: clamp(2.4rem, 8vw, 4rem);
+      color: var(--accent);
+    }
+    #win-overlay p { color: var(--muted); font-size: 0.85rem; line-height: 1.7; }
+    #win-overlay .big { font-size: 3.5rem; margin-bottom: 8px; }
+    #win-overlay button {
+      margin-top: 10px;
+      background: var(--accent);
+      border: none;
+      color: var(--bg);
+      padding: 12px 38px;
+      border-radius: 40px;
+      cursor: pointer;
+      font-family: 'DM Mono', monospace;
+      font-size: 0.85rem;
+      letter-spacing: 0.1em;
+    }
+    #win-overlay button:hover { opacity: 0.85; }
+
+    /* ── FOOTER ─────────────────────────────────────────────── */
+    footer {
+      margin-top: 40px;
+      color: var(--muted);
+      font-size: 0.68rem;
+      letter-spacing: 0.06em;
+      text-align: center;
+      line-height: 1.8;
+    }
+  </style>
+</head>
+<body>
+
+<!-- ── STATS ──────────────────────────────────────────────── -->
+<div id="stats">
+  <div class="stat-box">
+    <span class="stat-label">Moves</span>
+    <span class="stat-value" id="moves-display">0</span>
+  </div>
+  <div class="stat-box">
+    <span class="stat-label">Pairs</span>
+    <span class="stat-value" id="pairs-display">0</span>
+  </div>
+  <div class="stat-box">
+    <span class="stat-label">Time</span>
+    <span class="stat-value" id="timer-display">0s</span>
+  </div>
+</div>
+
+<!-- ── DIFFICULTY ─────────────────────────────────────────── -->
+<div id="difficulty-bar">
+  <button class="diff-btn active" data-pairs="6">Easy (6)</button>
+  <button class="diff-btn"        data-pairs="8">Medium (8)</button>
+  <button class="diff-btn"        data-pairs="12">Hard (12)</button>
+</div>
+
+<!-- ── GAME BOARD ─────────────────────────────────────────── -->
+<div id="board" role="grid" aria-label="Memory card game board"></div>
+
+<!-- ── RESTART BUTTON ─────────────────────────────────────── -->
+<button id="restart">↺ New Game</button>
+
+<!-- ── WIN OVERLAY ────────────────────────────────────────── -->
+<div id="win-overlay" role="dialog" aria-modal="true" aria-label="You won">
+  <div class="big">🎉</div>
+  <h2>You Won!</h2>
+  <p id="win-message"></p>
+  <button onclick="startGame()">Play Again</button>
+</div>
+
+<!-- ── FOOTER ─────────────────────────────────────────────── -->
+<footer>
+  Memory Match · AP CSP Create Performance Task<br>
+  All code written independently.
+</footer>
+
+<!-- ═══════════════════════════════════════════════════════════
+     JAVASCRIPT — GAME LOGIC
+     ═══════════════════════════════════════════════════════════ -->
+<script>
+  /*
+   * ─────────────────────────────────────────────────────────
+   *  DATA: LIST of emoji symbols used as card faces.
+   *
+   *  AP CSP Requirement: "Use of at least one list (or other
+   *  collection type) to represent a collection of data that
+   *  is stored and used to manage program complexity."
+   * ─────────────────────────────────────────────────────────
+   */
+  const ALL_SYMBOLS = [
+    "🦊", "🐬", "🦋", "🌵", "🍄", "🪐",
+    "🎸", "🏔️", "🔮", "🦀", "🌸", "🎭"
+  ];
+
+  /* ── STATE VARIABLES ────────────────────────────────────── */
+  let moves        = 0;
+  let pairsFound   = 0;
+  let totalPairs   = 6;
+  let flippedCards = [];
+  let canFlip      = true;
+  let timerInterval= null;
+  let elapsedSecs  = 0;
+  let gameStarted  = false;
+
+  /* ── DOM REFERENCES ─────────────────────────────────────── */
+  const board        = document.getElementById("board");
+  const movesDisplay = document.getElementById("moves-display");
+  const pairsDisplay = document.getElementById("pairs-display");
+  const timerDisplay = document.getElementById("timer-display");
+  const winOverlay   = document.getElementById("win-overlay");
+  const winMessage   = document.getElementById("win-message");
+
+  /*
+   * ─────────────────────────────────────────────────────────
+   *  PROCEDURE: shuffle(array)
+   *  Parameters: array — any JavaScript array
+   *  Returns: the same array, shuffled in place
+   * ─────────────────────────────────────────────────────────
+   */
+  function shuffle(array) {
+    for (let i = array.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [array[i], array[j]] = [array[j], array[i]];
+    }
+    return array;
+  }
+
+  /*
+   * ─────────────────────────────────────────────────────────
+   *  PROCEDURE: buildDeck(numPairs)
+   *  Parameters: numPairs — integer, number of unique pairs
+   *  Returns: shuffled array of card objects
+   *  Uses: Sequencing, Selection (slice), Iteration (forEach)
+   * ─────────────────────────────────────────────────────────
+   */
+  function buildDeck(numPairs) {
+    const selected = ALL_SYMBOLS.slice(0, numPairs);
+    const doubled  = shuffle([...selected, ...selected]);
+    const deck     = [];
+    doubled.forEach((symbol, index) => {
+      deck.push({ id: index, symbol: symbol, matched: false });
+    });
+    return deck;
+  }
+
+  /*
+   * ─────────────────────────────────────────────────────────
+   *  PROCEDURE: checkForMatch(card1, card2)
+   *
+   *  AP CSP: Named procedure with parameters, return type
+   *  documented (void), containing sequencing, selection,
+   *  and iteration in its body.
+   *
+   *  Parameters:
+   *    card1 — DOM element: first flipped card
+   *    card2 — DOM element: second flipped card
+   *  Returns: void
+   * ─────────────────────────────────────────────────────────
+   */
+  function checkForMatch(card1, card2) {
+    // SEQUENCE: increment move counter and update display
+    moves++;
+    movesDisplay.textContent = moves;
+
+    // SEQUENCE: read symbols from each card
+    const sym1 = card1.dataset.symbol;
+    const sym2 = card2.dataset.symbol;
+
+    // SELECTION: check if the two symbols match
+    if (sym1 === sym2) {
+      // SEQUENCE: mark both cards as matched
+      card1.classList.add("matched");
+      card2.classList.add("matched");
+
+      // ITERATION: update matched flag on all flipped cards
+      flippedCards.forEach(c => {
+        c.dataset.matched = "true";
+      });
+
+      // SEQUENCE: update pairs counter and display
+      pairsFound++;
+      pairsDisplay.textContent = pairsFound;
+
+      // SEQUENCE: reset flipped list and unlock board
+      flippedCards = [];
+      canFlip = true;
+
+      // SELECTION: check if all pairs have been found
+      if (pairsFound === totalPairs) {
+        clearInterval(timerInterval);
+        showWinScreen();
+      }
+
+    } else {
+      // SEQUENCE: show wrong indicator on both cards
+      card1.classList.add("wrong");
+      card2.classList.add("wrong");
+
+      // SEQUENCE: flip cards back after short delay
+      setTimeout(() => {
+        card1.classList.remove("wrong", "flipped");
+        card2.classList.remove("wrong", "flipped");
+        flippedCards = [];
+        canFlip = true;
+      }, 900);
+    }
+  }
+
+  /*
+   * ─────────────────────────────────────────────────────────
+   *  PROCEDURE: handleCardClick(event)
+   *  Parameters: event — DOM MouseEvent from user click
+   *  Returns: void
+   *  AP CSP: Input from user (click events trigger gameplay)
+   * ─────────────────────────────────────────────────────────
+   */
+  function handleCardClick(event) {
+    const card = event.currentTarget;
+
+    // SELECTION: guard clauses to ignore invalid clicks
+    if (!canFlip)                           return;
+    if (card.classList.contains("flipped")) return;
+    if (card.dataset.matched === "true")    return;
+
+    // SEQUENCE: start timer on first card click
+    if (!gameStarted) {
+      gameStarted = true;
+      startTimer();
+    }
+
+    // SEQUENCE: flip card and add to tracked list
+    card.classList.add("flipped");
+    flippedCards.push(card);
+
+    // SELECTION: if two cards are up, check for a match
+    if (flippedCards.length === 2) {
+      canFlip = false;
+      // CALL to student-developed procedure
+      checkForMatch(flippedCards[0], flippedCards[1]);
+    }
+  }
+
+  /*
+   * ─────────────────────────────────────────────────────────
+   *  PROCEDURE: renderBoard(deck)
+   *  Parameters: deck — array of card objects
+   *  Returns: void
+   * ─────────────────────────────────────────────────────────
+   */
+  function renderBoard(deck) {
+    board.innerHTML = "";
+    const cols = totalPairs <= 6 ? 4 : totalPairs <= 8 ? 4 : 6;
+    board.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
+
+    // ITERATION: create one DOM card per entry in the deck list
+    deck.forEach(cardData => {
+      const card  = document.createElement("div");
+      card.classList.add("card");
+      card.setAttribute("role", "button");
+      card.setAttribute("aria-label", "Memory card");
+      card.dataset.symbol  = cardData.symbol;
+      card.dataset.matched = "false";
+
+      const back  = document.createElement("div");
+      back.classList.add("card-face", "card-back");
+      back.innerHTML = `<span class="card-back-icon">✦</span>`;
+
+      const front = document.createElement("div");
+      front.classList.add("card-face", "card-front");
+      front.textContent = cardData.symbol; // OUTPUT: emoji on reveal
+
+      card.appendChild(back);
+      card.appendChild(front);
+      card.addEventListener("click", handleCardClick); // INPUT
+      board.appendChild(card);
+    });
+  }
+
+  /*
+   * PROCEDURE: startTimer()
+   * Starts a 1-second interval updating the timer display.
+   */
+  function startTimer() {
+    timerInterval = setInterval(() => {
+      elapsedSecs++;
+      timerDisplay.textContent = elapsedSecs + "s"; // OUTPUT
+    }, 1000);
+  }
+
+  /*
+   * PROCEDURE: showWinScreen()
+   * Displays the win overlay with final stats.
+   * AP CSP: Output based on input and program functionality.
+   */
+  function showWinScreen() {
+    winMessage.textContent =
+      `${totalPairs} pairs found in ${moves} moves ` +
+      `and ${elapsedSecs} seconds.`;
+    winOverlay.classList.add("show"); // OUTPUT: visual win screen
+  }
+
+  /*
+   * PROCEDURE: startGame()
+   * Resets all state and begins a fresh game.
+   */
+  function startGame() {
+    moves        = 0;
+    pairsFound   = 0;
+    flippedCards = [];
+    canFlip      = true;
+    elapsedSecs  = 0;
+    gameStarted  = false;
+    clearInterval(timerInterval);
+    movesDisplay.textContent = "0";
+    pairsDisplay.textContent = "0";
+    timerDisplay.textContent = "0s";
+    winOverlay.classList.remove("show");
+    const deck = buildDeck(totalPairs);
+    renderBoard(deck);
+  }
+
+  /* ── DIFFICULTY BUTTONS ───────────────────────────────────
+   *  INPUT: clicking a difficulty button restarts the game
+   */
+  document.querySelectorAll(".diff-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      document.querySelectorAll(".diff-btn").forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
+      totalPairs = parseInt(btn.dataset.pairs);
+      startGame();
+    });
+  });
+
+  /* ── RESTART BUTTON ───────────────────────────────────────
+   *  INPUT: clicking Restart triggers startGame
+   */
+  document.getElementById("restart").addEventListener("click", startGame);
+
+  /* ── INITIAL GAME START ───────────────────────────────────
+   *  Called once on page load.
+   */
+  startGame();
+
+</script>
+</body>
+</html>
